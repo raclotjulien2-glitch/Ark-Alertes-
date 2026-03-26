@@ -1,5 +1,6 @@
-const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, ActivityType } = require('discord.js');
 const axios = require('axios');
+const http = require('http');
 
 // CONFIGURATION DES SERVEURS (OFFICIELS ARK ASCENDED)
 const servers = [
@@ -7,61 +8,68 @@ const servers = [
     { name: "Scorched Earth 2367", id: "26857866" }
 ];
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+const client = new Client({ 
+    intents: [GatewayIntentBits.Guilds] 
+});
+
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 const CHANNEL_ID = process.env.CHANNEL_ID;
 
 let lastPlayerCount = {};
 
-client.once('ready', () => {
-    console.log(`✅ Bot Ark Officiel Connecté !`);
+// Correction pour forcer le statut "En ligne" (Vert)
+client.once('ready', (c) => {
+    console.log(`✅ Bot Ark Officiel Connecté en tant que ${c.user.tag} !`);
+    
+    // Définit le statut en ligne et l'activité
+    client.user.setPresence({
+        activities: [{ name: 'Surveillance Ark 🦖', type: ActivityType.Watching }],
+        status: 'online',
+    });
+
     console.log(`Surveillance de : ${servers.map(s => s.name).join(', ')}`);
     
-    // On vérifie toutes les 2 minutes (pour respecter les limites de l'API gratuite)
+    // Vérification toutes les 2 minutes
     setInterval(checkBattleMetrics, 120000);
     checkBattleMetrics();
 });
 
 async function checkBattleMetrics() {
     const channel = await client.channels.fetch(CHANNEL_ID).catch(() => null);
-    if (!channel) return;
+    if (!channel) {
+        console.log("⚠️ Erreur : Salon Discord introuvable. Vérifiez CHANNEL_ID.");
+        return;
+    }
 
     for (const server of servers) {
         try {
-            // Appel à l'API publique de BattleMetrics
             const response = await axios.get(`https://api.battlemetrics.com/servers/${server.id}`);
             const data = response.data.data.attributes;
             
             const currentCount = data.players;
             const maxPlayers = data.maxPlayers;
-            const serverName = data.name;
 
-            // Si on a déjà une valeur en mémoire, on compare
             if (lastPlayerCount[server.id] !== undefined) {
                 const diff = currentCount - lastPlayerCount[server.id];
 
                 if (diff > 0) {
-                    // Quelqu'un s'est connecté
                     channel.send(`📈 **[${server.name}]** +${diff} joueur(s) ! (Total: **${currentCount}/${maxPlayers}**)`);
                 } else if (diff < 0) {
-                    // Quelqu'un s'est déconnecté
                     channel.send(`📉 **[${server.name}]** ${diff} joueur(s). (Total: **${currentCount}/${maxPlayers}**)`);
                 }
             }
 
-            // Mise à jour de la mémoire
             lastPlayerCount[server.id] = currentCount;
 
         } catch (error) {
-            console.log(`Erreur lors de la lecture du serveur ${server.name}`);
+            console.log(`❌ Erreur API BattleMetrics pour ${server.name}`);
         }
     }
 }
 
 // Serveur HTTP pour maintenir Render éveillé
-const http = require('http');
 http.createServer((req, res) => {
-    res.write('Le tracker Ark est en cours d\'execution.');
+    res.write('Bot Ark Operationnel');
     res.end();
 }).listen(process.env.PORT || 3000);
 
