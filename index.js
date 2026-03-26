@@ -1,71 +1,68 @@
-const { Client, GatewayIntentBits } = require('discord.js');
-const Gamedig = require('gamedig');
+const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
+const axios = require('axios');
 
-// On teste les ports probables (Game Port, Game Port + 1, et le standard 27015)
-const serverConfigs = [
-    { name: "Lost Colony", host: "5.62.115.4", ports: [7777, 7778, 27015] },
-    { name: "Scorched Earth", host: "5.62.112.246", ports: [7781, 7782, 27015] }
+// CONFIGURATION DES SERVEURS (OFFICIELS ARK ASCENDED)
+const servers = [
+    { name: "Lost Colony 2775", id: "24419994" },
+    { name: "Scorched Earth 2367", id: "26857866" }
 ];
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages] });
+const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 const CHANNEL_ID = process.env.CHANNEL_ID;
-let lastPlayerList = {}; 
+
+let lastPlayerCount = {};
 
 client.once('ready', () => {
-    console.log(`✅ Bot Ark en ligne : ${client.user.tag}`);
-    setInterval(checkServers, 60000); // Vérification toutes les 60 secondes
-    checkServers(); 
+    console.log(`✅ Bot Ark Officiel Connecté !`);
+    console.log(`Surveillance de : ${servers.map(s => s.name).join(', ')}`);
+    
+    // On vérifie toutes les 2 minutes (pour respecter les limites de l'API gratuite)
+    setInterval(checkBattleMetrics, 120000);
+    checkBattleMetrics();
 });
 
-async function checkServers() {
+async function checkBattleMetrics() {
     const channel = await client.channels.fetch(CHANNEL_ID).catch(() => null);
     if (!channel) return;
 
-    for (const config of serverConfigs) {
-        let success = false;
-        
-        // On boucle sur les ports jusqu'à ce qu'un réponde
-        for (const port of config.ports) {
-            if (success) break;
+    for (const server of servers) {
+        try {
+            // Appel à l'API publique de BattleMetrics
+            const response = await axios.get(`https://api.battlemetrics.com/servers/${server.id}`);
+            const data = response.data.data.attributes;
             
-            try {
-                const state = await Gamedig.query({
-                    type: 'arksa', 
-                    host: config.host,
-                    port: port,
-                    maxRetries: 2
-                });
+            const currentCount = data.players;
+            const maxPlayers = data.maxPlayers;
+            const serverName = data.name;
 
-                success = true;
-                const currentPlayers = state.players.map(p => p.name);
-                const serverKey = `${config.host}:${config.name}`;
+            // Si on a déjà une valeur en mémoire, on compare
+            if (lastPlayerCount[server.id] !== undefined) {
+                const diff = currentCount - lastPlayerCount[server.id];
 
-                if (lastPlayerList[serverKey]) {
-                    const joined = currentPlayers.filter(p => !lastPlayerList[serverKey].includes(p));
-                    const left = lastPlayerList[serverKey].filter(p => !currentPlayers.includes(p));
-
-                    if (joined.length > 0) {
-                        channel.send(`✅ **[${config.name}]** Connexion : \`${joined.join(', ')}\` (${currentPlayers.length}/${state.maxplayers})`);
-                    }
-                    if (left.length > 0) {
-                        channel.send(`❌ **[${config.name}]** Déconnexion : \`${left.join(', ')}\``);
-                    }
+                if (diff > 0) {
+                    // Quelqu'un s'est connecté
+                    channel.send(`📈 **[${server.name}]** +${diff} joueur(s) ! (Total: **${currentCount}/${maxPlayers}**)`);
+                } else if (diff < 0) {
+                    // Quelqu'un s'est déconnecté
+                    channel.send(`📉 **[${server.name}]** ${diff} joueur(s). (Total: **${currentCount}/${maxPlayers}**)`);
                 }
-                lastPlayerList[serverKey] = currentPlayers;
-
-            } catch (e) {
-                // On ignore l'erreur et on teste le port suivant
             }
-        }
-        
-        if (!success) {
-            console.log(`⚠️ Impossible de joindre ${config.name} sur aucun des ports testés.`);
+
+            // Mise à jour de la mémoire
+            lastPlayerCount[server.id] = currentCount;
+
+        } catch (error) {
+            console.log(`Erreur lors de la lecture du serveur ${server.name}`);
         }
     }
 }
 
-// Petit serveur pour Render
-require('http').createServer((req, res) => { res.write('OK'); res.end(); }).listen(process.env.PORT || 3000);
+// Serveur HTTP pour maintenir Render éveillé
+const http = require('http');
+http.createServer((req, res) => {
+    res.write('Le tracker Ark est en cours d\'execution.');
+    res.end();
+}).listen(process.env.PORT || 3000);
 
 client.login(DISCORD_TOKEN);
