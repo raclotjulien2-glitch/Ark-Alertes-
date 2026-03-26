@@ -9,7 +9,7 @@ const servers = [
 ];
 
 const client = new Client({ 
-    intents: [GatewayIntentBits.Guilds] 
+    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages] 
 });
 
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
@@ -17,29 +17,41 @@ const CHANNEL_ID = process.env.CHANNEL_ID;
 
 let lastPlayerCount = {};
 
-// Correction pour forcer le statut "En ligne" (Vert)
-client.once('ready', (c) => {
-    console.log(`✅ Bot Ark Officiel Connecté en tant que ${c.user.tag} !`);
+client.once('ready', async (c) => {
+    console.log(`✅ Bot Ark Connecté : ${c.user.tag}`);
     
-    // Définit le statut en ligne et l'activité
+    // Statut visuel sur Discord
     client.user.setPresence({
-        activities: [{ name: 'Surveillance Ark 🦖', type: ActivityType.Watching }],
+        activities: [{ name: 'Défense Ark 🦖', type: ActivityType.Watching }],
         status: 'online',
     });
 
-    console.log(`Surveillance de : ${servers.map(s => s.name).join(', ')}`);
-    
+    // TEST D'ENVOI IMMÉDIAT (Pour vérifier les permissions)
+    const channel = await client.channels.fetch(CHANNEL_ID).catch(() => null);
+    if (channel) {
+        channel.send("🚀 **Système de surveillance activé !**\nLe bot est maintenant opérationnel sur les serveurs 2775 et 2367.");
+    } else {
+        console.log("⚠️ ERREUR : Salon introuvable. Vérifiez l'ID et les permissions.");
+    }
+
     // Vérification toutes les 2 minutes
     setInterval(checkBattleMetrics, 120000);
-    checkBattleMetrics();
+    checkBMFirstTime(); // Initialise les compteurs sans envoyer de spam
 });
+
+// Fonction pour initialiser sans spammer au démarrage
+async function checkBMFirstTime() {
+    for (const server of servers) {
+        try {
+            const response = await axios.get(`https://api.battlemetrics.com/servers/${server.id}`);
+            lastPlayerCount[server.id] = response.data.data.attributes.players;
+        } catch (e) { console.log(`Erreur init ${server.name}`); }
+    }
+}
 
 async function checkBattleMetrics() {
     const channel = await client.channels.fetch(CHANNEL_ID).catch(() => null);
-    if (!channel) {
-        console.log("⚠️ Erreur : Salon Discord introuvable. Vérifiez CHANNEL_ID.");
-        return;
-    }
+    if (!channel) return;
 
     for (const server of servers) {
         try {
@@ -55,22 +67,17 @@ async function checkBattleMetrics() {
                 if (diff > 0) {
                     channel.send(`📈 **[${server.name}]** +${diff} joueur(s) ! (Total: **${currentCount}/${maxPlayers}**)`);
                 } else if (diff < 0) {
-                    channel.send(`📉 **[${server.name}]** ${diff} joueur(s). (Total: **${currentCount}/${maxPlayers}**)`);
+                    channel.send(`📉 **[${server.name}]** ${Math.abs(diff)} joueur(s) est parti. (Total: **${currentCount}/${maxPlayers}**)`);
                 }
             }
-
             lastPlayerCount[server.id] = currentCount;
-
         } catch (error) {
-            console.log(`❌ Erreur API BattleMetrics pour ${server.name}`);
+            console.log(`Erreur API pour ${server.name}`);
         }
     }
 }
 
-// Serveur HTTP pour maintenir Render éveillé
-http.createServer((req, res) => {
-    res.write('Bot Ark Operationnel');
-    res.end();
-}).listen(process.env.PORT || 3000);
+// Maintien Render
+http.createServer((req, res) => { res.write('OK'); res.end(); }).listen(process.env.PORT || 3000);
 
 client.login(DISCORD_TOKEN);
