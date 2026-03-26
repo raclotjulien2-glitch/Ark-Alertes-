@@ -2,7 +2,7 @@ const { Client, GatewayIntentBits, ActivityType } = require('discord.js');
 const axios = require('axios');
 const http = require('http');
 
-// CONFIGURATION DES SERVEURS AVEC LES IDS REELS
+// CONFIGURATION DES SERVEURS (IDS BATTLEMETRICS REELS)
 const servers = [
     { name: "Lost Colony 2775", id: "27097153" }, 
     { name: "Scorched Earth 2367", id: "27128740" }
@@ -26,14 +26,9 @@ client.once('ready', async (c) => {
         status: 'online',
     });
 
-    const channel = await client.channels.fetch(CHANNEL_ID).catch(() => null);
-    if (channel) {
-        console.log("Salon Discord détecté avec succès.");
-    }
-
-    // Initialisation et boucle
+    // Initialisation et boucle de scan
     await checkBMFirstTime();
-    setInterval(checkBattleMetrics, 120000); // Vérifie toutes les 2 minutes
+    setInterval(checkBattleMetrics, 120000); // Vérification toutes les 2 minutes
 });
 
 async function checkBMFirstTime() {
@@ -43,7 +38,7 @@ async function checkBMFirstTime() {
             lastPlayerCount[server.id] = response.data.data.attributes.players;
             console.log(`Initialisation ${server.name} : ${lastPlayerCount[server.id]} joueurs.`);
         } catch (e) { 
-            console.log(`Erreur initialisation ${server.name} : ID ${server.id} invalide.`); 
+            console.log(`Erreur initialisation ${server.name}`); 
         }
     }
 }
@@ -63,8 +58,10 @@ async function checkBattleMetrics() {
                 const diff = currentCount - lastPlayerCount[server.id];
                 
                 if (diff > 0) {
-                    channel.send(`📈 **[${server.name}]** +${diff} joueur(s) détecté(s) ! (Total: **${currentCount}/${maxPlayers}**)`);
+                    // ALERTE CONNEXION AVEC MENTION EVERYONE
+                    channel.send(`🚨 @everyone **[${server.name}]** +${diff} joueur(s) détecté(s) ! (Total: **${currentCount}/${maxPlayers}**)`);
                 } else if (diff < 0) {
+                    // ALERTE DECONNEXION (SANS MENTION POUR LE CALME)
                     channel.send(`📉 **[${server.name}]** ${Math.abs(diff)} joueur(s) est parti. (Total: **${currentCount}/${maxPlayers}**)`);
                 }
             }
@@ -75,7 +72,7 @@ async function checkBattleMetrics() {
     }
 }
 
-// SERVEUR HTTP POUR RENDER (PORT 10000)
+// SERVEUR HTTP POUR RENDER
 http.createServer((req, res) => {
     res.writeHead(200, {'Content-Type': 'text/plain'});
     res.write('Bot Ark Actif');
