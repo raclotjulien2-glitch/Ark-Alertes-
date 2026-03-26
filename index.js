@@ -2,15 +2,12 @@ const { Client, GatewayIntentBits, ActivityType } = require('discord.js');
 const axios = require('axios');
 const http = require('http');
 
-// CONFIGURATION DES SERVEURS (IDS BATTLEMETRICS REELS)
 const servers = [
     { name: "Lost Colony 2775", id: "27097153" }, 
     { name: "Scorched Earth 2367", id: "27128740" }
 ];
 
-const client = new Client({ 
-    intents: [GatewayIntentBits.Guilds] 
-});
+const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 const CHANNEL_ID = process.env.CHANNEL_ID;
@@ -19,16 +16,10 @@ const PORT = process.env.PORT || 10000;
 let lastPlayerCount = {};
 
 client.once('ready', async (c) => {
-    console.log(`✅ Bot Ark Officiel Connecté : ${c.user.tag}`);
-    
-    client.user.setPresence({
-        activities: [{ name: 'Défense Ark 🦖', type: ActivityType.Watching }],
-        status: 'online',
-    });
-
-    // Initialisation et boucle de scan
+    console.log(`✅ Bot Ark Connecté : ${c.user.tag}`);
+    client.user.setPresence({ activities: [{ name: 'Défense Ark 🦖', type: ActivityType.Watching }], status: 'online' });
     await checkBMFirstTime();
-    setInterval(checkBattleMetrics, 120000); // Vérification toutes les 2 minutes
+    setInterval(checkBattleMetrics, 120000); 
 });
 
 async function checkBMFirstTime() {
@@ -37,9 +28,7 @@ async function checkBMFirstTime() {
             const response = await axios.get(`https://api.battlemetrics.com/servers/${server.id}`);
             lastPlayerCount[server.id] = response.data.data.attributes.players;
             console.log(`Initialisation ${server.name} : ${lastPlayerCount[server.id]} joueurs.`);
-        } catch (e) { 
-            console.log(`Erreur initialisation ${server.name}`); 
-        }
+        } catch (e) { console.log(`Erreur init ${server.name}`); }
     }
 }
 
@@ -58,27 +47,31 @@ async function checkBattleMetrics() {
                 const diff = currentCount - lastPlayerCount[server.id];
                 
                 if (diff > 0) {
-                    // ALERTE CONNEXION AVEC MENTION EVERYONE
-                    channel.send(`🚨 @everyone **[${server.name}]** +${diff} joueur(s) détecté(s) ! (Total: **${currentCount}/${maxPlayers}**)`);
+                    let message = `📈 **[${server.name}]** +${diff} joueur(s) ! (Total: **${currentCount}/${maxPlayers}**)`;
+                    
+                    // --- SYSTÈME D'ALERTES PAR PALIERS ---
+                    if (currentCount >= 10) {
+                        message = `🔴 @everyone **ALERTE CRITIQUE [${server.name}]** : **${currentCount}** joueurs en ligne ! PRÉPAREZ LA DÉFENSE ! 🔴`;
+                    } else if (currentCount >= 5) {
+                        message = `🟠 @everyone **ATTENTION [${server.name}]** : **${currentCount}** joueurs détectés. Soyez vigilants ! 🟠`;
+                    } else {
+                        message = `🚨 **[${server.name}]** +${diff} joueur(s) ! (Total: **${currentCount}/${maxPlayers}**)`;
+                    }
+                    
+                    channel.send(message);
                 } else if (diff < 0) {
-                    // ALERTE DECONNEXION (SANS MENTION POUR LE CALME)
                     channel.send(`📉 **[${server.name}]** ${Math.abs(diff)} joueur(s) est parti. (Total: **${currentCount}/${maxPlayers}**)`);
                 }
             }
             lastPlayerCount[server.id] = currentCount;
-        } catch (error) {
-            console.log(`Erreur scan BattleMetrics pour ${server.name}`);
-        }
+        } catch (error) { console.log(`Erreur scan ${server.name}`); }
     }
 }
 
-// SERVEUR HTTP POUR RENDER
 http.createServer((req, res) => {
     res.writeHead(200, {'Content-Type': 'text/plain'});
     res.write('Bot Ark Actif');
     res.end();
-}).listen(PORT, '0.0.0.0', () => {
-    console.log(`Serveur actif sur port ${PORT}`);
-});
+}).listen(PORT, '0.0.0.0');
 
 client.login(DISCORD_TOKEN);
